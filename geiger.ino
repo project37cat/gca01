@@ -1,5 +1,5 @@
-// Arduino Geiger counter 01.1
-// Arduino 1.0.5 
+// Arduino Geiger counter 01.2
+// Arduino 1.0.5
 
 
 #include "LiquidCrystal.h"
@@ -18,7 +18,7 @@
 LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
 
 uint16_t rad_buff[GEIGER_TIME]; //массив секундных замеров для расчета фона
-uint16_t adc_key_val[5] ={50, 200, 400, 600, 800 }; //значения АЦП для обработки кнопок
+uint16_t adc_key_val[5] = { 50, 200, 400, 600, 800 }; //значения АЦП для обработки кнопок
 
 uint32_t rad_sum; //сумма импульсов за все время
 uint32_t rad_back; //текущий фон
@@ -37,6 +37,7 @@ char str_buff[17];
 void conv_pump(void);
 uint8_t get_key(void);
 uint8_t check_keys(void);
+void alarm_warning(void);
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -81,12 +82,11 @@ EICRA=0b00000010; //настриваем внешнее прерывание 0 �
 EIMSK=0b00000001; //разрешаем внешнее прерывание 0
 }
 
-
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 ISR(INT0_vect) //внешнее прерывание //считаем импульсы от счетчика
 {
 if(rad_buff[0]!=65535) rad_buff[0]++; //нулевой элемент массива - текущий секундный замер
-if(++rad_sum>999999*3600/GEIGER_TIME) rad_sum=999999*3600/GEIGER_TIME; //общая сумма импульсов
+if(++rad_sum>999999UL*3600/GEIGER_TIME) rad_sum=999999UL*3600/GEIGER_TIME; //общая сумма импульсов
 
 conv_pump(); //подкачка преобразователя
 }
@@ -96,7 +96,7 @@ conv_pump(); //подкачка преобразователя
 ISR(TIMER1_OVF_vect) //прерывание по переполнению Timer 1
 {
 static uint8_t cnt1;
-static uint8_t cnt2;  
+static uint8_t cnt2;
 
 TCNT1=TIMER1_PRELOAD;
 
@@ -166,7 +166,6 @@ for (uint8_t i=0; i<NUM_KEYS; i++)
 return key;
 }
 
-
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 uint8_t check_keys(void) //проверить клавиатуру
 {
@@ -231,6 +230,7 @@ void loop(void) //главная
 {
 if(alarm) alarm_warning();
 
+
 lcd.setCursor(0,0);
 switch(scr_mode)
 	{
@@ -254,13 +254,44 @@ switch(scr_mode)
 lcd.setCursor(5,1);
 lcd.print(str_buff);
 
+lcd.setCursor(0,1);
+if(alarm_disable) lcd.print("x"); //если тревога была отключена рисуем "x" в углу экрана
+else lcd.print(" ");
+
+
 switch(check_keys())
 	{
-	case 1: break; //right key
-	case 2: break; //up key
-	case 3: break; //down key
-	case 4: break; //left key
-	case 5: if(++scr_mode>3) scr_mode=0; lcd.clear(); break; //select key
+	case 1: //right key
+		break;
+	case 2: //up key
+		break;
+	case 3: //down key //сброс
+		switch(scr_mode)
+			{
+			case 0: //сбрасываем фон и флаг отключения тревоги
+				for(uint8_t i=0; i<GEIGER_TIME; i++) rad_buff[i]=0;
+				rad_back=0;
+				alarm_disable=0;
+				break;
+			case 1: //сбрасываем дозу
+				rad_sum=0;
+				rad_dose=0;
+				break;
+			case 2: //сбрасываем макс. фон
+				rad_max=0;
+				break;
+			case 3: //сброс счетчика времени
+				time_hrs=time_min=time_sec=0;
+				break;
+			}
+		break;
+	case 4: //left key
+		break;
+	case 5: //select key //выбор режима
+		if(++scr_mode>3)
+		scr_mode=0;
+		lcd.clear();
+		break;
 	}
 
 _delay_ms(100);
